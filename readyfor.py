@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-import os, pyqrcode, shlex, subprocess
+import netifaces, os, pyqrcode, shlex, subprocess
 
 CERT_GEN_CMD = 'openssl req -new -newkey rsa:2048 -x509 -sha256 -nodes -days 730 -nodes -x509 -subj "/C=CN/O=Lenovo/OU=MBG/CN=Lenovo" -keyout selfsigned.key -out selfsigned.cert'
 CERT_GET_FP = 'openssl x509 -in selfsigned.cert -noout -fingerprint -sha256'
@@ -28,5 +28,14 @@ def generate_cert():
     
     return X509
     
+def get_ip_addresses():
+    addresses = []
+    for iface in netifaces.interfaces():
+        for k,v in netifaces.ifaddresses(iface).items():
+            if v[0]['addr'] != '127.0.0.1' and len(v[0]['addr'].split('.')) == 4:
+                # Valid address!
+                addresses.append(v[0]['addr'])
+    return addresses
+
 X509 = generate_cert()
 print(X509)
