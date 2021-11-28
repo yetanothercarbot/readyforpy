@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-import json, netifaces, os, pyqrcode, random, shlex, string, subprocess, time
+import hashlib, json, netifaces, os, pyqrcode, random, shlex, string, subprocess, time
 
 CERT_GEN_CMD = 'openssl req -new -newkey rsa:2048 -x509 -sha256 -nodes -days 730 -nodes -x509 -subj "/C=CN/O=Lenovo/OU=MBG/CN=Lenovo" -keyout selfsigned.key -out selfsigned.cert'
 CERT_GET_FP = 'openssl x509 -in selfsigned.cert -noout -fingerprint -sha256'
@@ -31,7 +31,7 @@ def generate_cert():
     
     return X509
     
-def get_ip_address():
+def get_ip_addresses():
     addresses = []
     for iface in netifaces.interfaces():
         for k,v in netifaces.ifaddresses(iface).items():
@@ -39,16 +39,37 @@ def get_ip_address():
                 # Valid address!
                 addresses.append(v[0]['addr'])
     # Return first available IP address
-    return addresses[0]
+    return addresses
 
 def generate_host_info():
-    timestamp = int(time.time())
-    un = ''.join(random.choices(RAND_VALID_CHARS, k=16))
-    pw = 16 * "A"
-    # password = ''.join(random.choice(RAND_VALID_CHARS) for i in range(16)
-    content = "Moto@lenovo.com" + VER_STRING + str(timestamp) + un + pw + str(EXPIRY_PERIOD) + "[\"" + get_ip_address() + "\"]"
-    print(content)
+    host_info = {}
+    host_info['authLevel'] = 2
+    host_info['sn'] = 0
+    host_info['ips'] = get_ip_addresses();
+    host_info['timestamp'] = int(time.time())
+    host_info['user'] = ''.join(random.choices(RAND_VALID_CHARS, k=16))
+    host_info['pass'] = ''.join(random.choices(RAND_VALID_CHARS, k=16))
+    host_info['version'] = VER_STRING
+    content = ("Moto@lenovo.com" 
+                + VER_STRING 
+                + str(host_info['timestamp']) 
+                + host_info['user'] 
+                + host_info['pass'] 
+                + str(EXPIRY_PERIOD) + "[\"" + host_info['ips'][0] + "\"]")
+    host_info['token'] = hashlib.sha256(content.encode()).hexdigest()
+    print("Generated token:", host_info['token'])
+    return host_info
+
+def generate_qr():
+    qr_content = "motorolardpconnection" + json.dumps(generate_host_info(), separators=(',', ':'))
+    qr = subprocess.run(shlex.split(f"qrencode -t utf8 '{qr_content}'"),
+        stdout=subprocess.PIPE,
+        universal_newlines=True)
+    print(qr.stdout)
+    #print(qr_content)
+    #qr = pyqrcode.create(qr_content)
+    #print(qr.terminal(quiet_zone=0))
 
 X509 = generate_cert()
 # print(X509)
-generate_host_info()
+generate_qr()
