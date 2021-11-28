@@ -43,7 +43,7 @@ def get_ip_addresses():
 
 def generate_host_info(keycert):
     host_info = {}
-    host_info['fp'] = keycert.fp
+    host_info['fp'] = keycert['fp']
     host_info['authLevel'] = 2
     host_info['sn'] = 0
     host_info['ips'] = get_ip_addresses();
@@ -61,8 +61,8 @@ def generate_host_info(keycert):
     print("Generated token:", host_info['token'])
     return host_info
 
-def generate_qr():
-    qr_content = "motorolardpconnection" + json.dumps(generate_host_info(), separators=(',', ':'))
+def generate_qr(keycert):
+    qr_content = "motorolardpconnection" + json.dumps(generate_host_info(keycert), separators=(',', ':'))
     qr = subprocess.run(shlex.split(f"qrencode -t utf8 '{qr_content}'"),
         stdout=subprocess.PIPE,
         universal_newlines=True)
