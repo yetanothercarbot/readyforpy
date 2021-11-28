@@ -41,8 +41,9 @@ def get_ip_addresses():
     # Return first available IP address
     return addresses
 
-def generate_host_info():
+def generate_host_info(keycert):
     host_info = {}
+    host_info['fp'] = keycert.fp
     host_info['authLevel'] = 2
     host_info['sn'] = 0
     host_info['ips'] = get_ip_addresses();
@@ -70,6 +71,5 @@ def generate_qr():
     #qr = pyqrcode.create(qr_content)
     #print(qr.terminal(quiet_zone=0))
 
-X509 = generate_cert()
-# print(X509)
-generate_qr()
+keycert = generate_cert()
+generate_qr(keycert)
