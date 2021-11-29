@@ -18,7 +18,22 @@ HTTP_PORT = 9833
 
 def check_deps():
     # TODO: Check if OpenSSL, qrencode, etc are available
+    # Best way to check if they are available is to run them
+    try:
+        openssl_return_code = subprocess.run(shlex.split('openssl help'),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            universal_newlines=True).returncode
+        qrencode_return_code = subprocess.run(shlex.split('qrencode'),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            universal_newlines=True)
+    except FileNotFoundError as err:
+        print(f"Unable to execute {err.filename}. Is it installed?")
+        sys.exit(1)
     return True
+
+check_deps()
 
 # Generates a new certificate
 def generate_cert():
