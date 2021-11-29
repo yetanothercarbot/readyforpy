@@ -3,7 +3,9 @@
 import sys
 
 try:
-    import hashlib, json, netifaces, os, random, shlex, string, subprocess, time
+    import hashlib, json, netifaces, os, random, shlex, ssl, string, subprocess, time
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
 except ImportError as err:
     print(f"Unable to load {err.name} - have you installed library dependencies?")
     sys.exit(1)
@@ -13,7 +15,6 @@ CERT_GET_FP = 'openssl x509 -in selfsigned.cert -noout -fingerprint -sha256'
 VER_STRING = "1.6.60"
 EXPIRY_PERIOD = 60
 RAND_VALID_CHARS = string.ascii_uppercase + string.ascii_lowercase + string.digits
-
 HTTP_PORT = 9833
 
 def check_deps():
@@ -32,8 +33,6 @@ def check_deps():
         print(f"Unable to execute {err.filename}. Is it installed?")
         sys.exit(1)
     return True
-
-check_deps()
 
 # Generates a new certificate
 def generate_cert():
@@ -72,7 +71,7 @@ def get_ip_addresses():
 # Generates the host info dictionary that will be processed for the qr code
 def generate_host_info(keycert):
     host_info = {}
-    host_info['fp'] = keycert['fp']
+    host_info['fp'] = keycert['fp'][:-1]
     host_info['authLevel'] = 2
     host_info['sn'] = 0
     host_info['ips'] = get_ip_addresses();
@@ -92,13 +91,33 @@ def generate_host_info(keycert):
 
 def generate_qr(keycert):
     qr_content = "motorolardpconnection" + json.dumps(generate_host_info(keycert), separators=(',', ':'))
+    print(qr_content)
     qr = subprocess.run(shlex.split(f"qrencode -t utf8 '{qr_content}'"),
         stdout=subprocess.PIPE,
         universal_newlines=True)
     print(qr.stdout)
-    #print(qr_content)
-    #qr = pyqrcode.create(qr_content)
-    #print(qr.terminal(quiet_zone=0))
 
+
+class MotoHandler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        return_message = "success"
+        print(self.rfile.read())
+
+        self.protocol_version = "HTTP/1.1"
+        self.send_response(200)
+        self.send_header("Content-Length", len(return_message))
+        self.end_headers()
+        self.wfile.write(bytes(return_message, "utf8"))
+
+
+
+check_deps()
 keycert = generate_cert()
 generate_qr(keycert)
+
+httpd = HTTPServer((get_ip_addresses()[0], HTTP_PORT), MotoHandler)
+httpd.socket = ssl.wrap_socket(httpd.socket,
+    keyfile="selfsigned.key",
+    certfile="selfsigned.cert",
+    server_side=True)
+httpd.serve_forever()
