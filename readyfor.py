@@ -111,12 +111,13 @@ class ReadyForHandler(BaseHTTPRequestHandler):
                 print(split[0] + ": " + split[1])
 
             if phone_info['token'] == host_info['token']:
-                print("Connect!")
                 self.protocol_version = "HTTP/1.1"
                 self.send_response(200)
                 self.send_header("Content-Length", len("success"))
                 self.end_headers()
                 self.wfile.write(bytes("success", "utf8"))
+                subprocess.run(shlex.split(f"xfreerdp /v:{phone_info['phoneIp']} /cert:ignore /size:1280x720 /u:{host_info['user']} /p:{host_info['pass']}"),
+                universal_newlines=True)
         elif self.path == "/rdp/connect/success":
             print("Success!")
             self.protocol_version = "HTTP/1.1"
