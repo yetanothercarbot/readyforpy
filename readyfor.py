@@ -89,8 +89,8 @@ def generate_host_info(keycert):
     print("Generated token:", host_info['token'])
     return host_info
 
-def generate_qr(keycert):
-    qr_content = "motorolardpconnection" + json.dumps(generate_host_info(keycert), separators=(',', ':'))
+def generate_qr(host_info):
+    qr_content = "motorolardpconnection" + json.dumps(host_info, separators=(',', ':'))
     print(qr_content)
     qr = subprocess.run(shlex.split(f"qrencode -t utf8 '{qr_content}'"),
         stdout=subprocess.PIPE,
@@ -98,24 +98,39 @@ def generate_qr(keycert):
     print(qr.stdout)
 
 
-class MotoHandler(BaseHTTPRequestHandler):
+class ReadyForHandler(BaseHTTPRequestHandler):
     def do_POST(self):
-        return_message = "success"
-        print(self.rfile.read())
+        print(self.path)
+        if self.path == "/rdp/connect":
+            raw_data = self.rfile.read().decode('utf8')
+            print(raw_data)
+            phone_info = {}
+            for kv_pair in raw_data.split('&'):
+                split = kv_pair.split('=')
+                phone_info[split[0]] = split[1]
+                print(split[0] + ": " + split[1])
 
-        self.protocol_version = "HTTP/1.1"
-        self.send_response(200)
-        self.send_header("Content-Length", len(return_message))
-        self.end_headers()
-        self.wfile.write(bytes(return_message, "utf8"))
-
-
+            if phone_info['token'] == host_info['token']:
+                print("Connect!")
+                self.protocol_version = "HTTP/1.1"
+                self.send_response(200)
+                self.send_header("Content-Length", len("success"))
+                self.end_headers()
+                self.wfile.write(bytes("success", "utf8"))
+        elif self.path == "/rdp/connect/success":
+            print("Success!")
+            self.protocol_version = "HTTP/1.1"
+            self.send_response(200)
+            self.send_header("Content-Length", len("success"))
+            self.end_headers()
+            self.wfile.write(bytes("success", "utf8"))
 
 check_deps()
 keycert = generate_cert()
-generate_qr(keycert)
+host_info = generate_host_info(keycert)
+generate_qr(host_info)
 
-httpd = HTTPServer((get_ip_addresses()[0], HTTP_PORT), MotoHandler)
+httpd = HTTPServer(('', HTTP_PORT), ReadyForHandler)
 httpd.socket = ssl.wrap_socket(httpd.socket,
     keyfile="selfsigned.key",
     certfile="selfsigned.cert",
