@@ -3,8 +3,8 @@
 import sys
 
 try:
-    import datetime, hashlib, json, netifaces, os, platform, random, re, shlex
-    import ssl, string, subprocess, time
+    import datetime, hashlib, json, netifaces, os, platform, qrcode, random
+    import re, shlex, ssl, string, subprocess, time
     from http.server import BaseHTTPRequestHandler, HTTPServer
 
     from cryptography import x509
@@ -135,15 +135,18 @@ def generate_host_info(keycert):
 
 def generate_qr(host_info):
     qr_content = "motorolardpconnection" + json.dumps(host_info, separators=(',', ':'))
-    qr = subprocess.run(shlex.split(f"qrencode -t utf8 '{qr_content}'"),
-        stdout=subprocess.PIPE,
-        universal_newlines=True)
-    print(qr.stdout)
+    #qr = subprocess.run(shlex.split(f"qrencode -t utf8 '{qr_content}'"),
+    #    stdout=subprocess.PIPE,
+    #    universal_newlines=True)
+    #print(qr.stdout)
+    qr = qrcode.make(qr_content)
+    qr.show()
 
 
 class ReadyForHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/rdp/connect":
+            print("*** You can close the QR code window now ***")
             raw_data = self.rfile.read().decode('utf8')
             print(raw_data)
             phone_info = {}
@@ -158,8 +161,11 @@ class ReadyForHandler(BaseHTTPRequestHandler):
                 self.send_header("Content-Length", len("success"))
                 self.end_headers()
                 self.wfile.write(bytes("success", "utf8"))
-                subprocess.run(shlex.split(f"{XFREERDP_PATH} /v:{phone_info['phoneIp']} /cert:ignore /size:1280x720 /u:{host_info['user']} /p:{host_info['pass']}"),
-                universal_newlines=True)
+                subprocess.run(
+                    shlex.split(f"{XFREERDP_PATH} /v:{phone_info['phoneIp']} /cert:ignore /size:1280x720 /u:{host_info['user']} /p:{host_info['pass']}")
+                    ,universal_newlines=True
+                )
+                sys.exit()
         elif self.path == "/rdp/connect/success":
             print("Success!")
             self.protocol_version = "HTTP/1.1"
