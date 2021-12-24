@@ -16,16 +16,14 @@ except ImportError as err:
     print(f"Unable to load {err.name} - have you installed library dependencies?")
     sys.exit(1)
 
-CERT_GEN_CMD = 'openssl req -new -newkey rsa:2048 -x509 -sha256 -nodes -days 730 -nodes -x509 -subj "/C=CN/O=Lenovo/OU=MBG/CN=Lenovo" -keyout selfsigned.key -out selfsigned.cert'
-CERT_GET_FP = 'openssl x509 -in selfsigned.cert -noout -fingerprint -sha256'
 VER_STRING = "1.6.60"
 EXPIRY_PERIOD = 60
 RAND_VALID_CHARS = string.ascii_uppercase + string.ascii_lowercase + string.digits
 HTTP_PORT = 9833
 
 def check_deps():
-    # TODO: Check if qr encode is available
-    # Best way to check if it is available is to run them
+    # Check if qr encode is available
+    # Best way to check if it is available is to run it
     try:
         qrencode_return_code = subprocess.run(shlex.split('qrencode'),
             stdout=subprocess.DEVNULL,
@@ -128,7 +126,7 @@ class ReadyForHandler(BaseHTTPRequestHandler):
                 self.send_header("Content-Length", len("success"))
                 self.end_headers()
                 self.wfile.write(bytes("success", "utf8"))
-                subprocess.run(shlex.split(f"xfreerdp /v:{phone_info['phoneIp']} /cert:ignore /size:1280x720 /u:{host_info['user']} /p:{host_info['pass']}"),
+                subprocess.run(shlex.split(f"/opt/freerdp-nightly/bin/xfreerdp /v:{phone_info['phoneIp']} /cert:ignore /size:1280x720 /u:{host_info['user']} /p:{host_info['pass']}"),
                 universal_newlines=True)
         elif self.path == "/rdp/connect/success":
             print("Success!")
@@ -144,6 +142,7 @@ host_info = generate_host_info(keycert)
 generate_qr(host_info)
 
 httpd = HTTPServer(('', HTTP_PORT), ReadyForHandler)
+# TODO: ssl.wrap_socket is deprecated with Py 3.7+
 httpd.socket = ssl.wrap_socket(httpd.socket,
     keyfile="selfsigned.key",
     certfile="selfsigned.cert",
