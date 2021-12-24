@@ -30,13 +30,13 @@ def check_freerdp():
         # Check if a xfreerdp is installed
         try:
             xfreerdp_result = subprocess.run(
-                shlex.split('/opt/freerdp-nightly/bin/xfreerd', '--version'),
+                shlex.split('/opt/freerdp-nightly/bin/xfreerdp --version'),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 universal_newlines=True
             )
             version = XFREERDP_RE.findall(xfreerdp_result.stdout)
-            if (int(version[0]) < 3)):
+            if (int(version[0]) < 3):
                 print(f"The provided version of xfreerdp is too old ({version[0]}.{version[1]}.{version[2]}). Please update to 3.0.0 or newer")
                 sys.exit(1)
         except FileNotFoundError as err:
