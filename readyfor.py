@@ -36,8 +36,8 @@ def check_freerdp():
                 universal_newlines=True
             )
             version = XFREERDP_RE.findall(xfreerdp_result.stdout)
-            if (int(version[0]) < 2) or (int(version[0]) == 2 and int(version[1]) < 4):
-                print(f"The provided version of xfreerdp is too old ({version[0]}.{version[1]}.{version[2]}). Please update to 2.4.1 or newer")
+            if (int(version[0]) < 3)):
+                print(f"The provided version of xfreerdp is too old ({version[0]}.{version[1]}.{version[2]}). Please update to 3.0.0 or newer")
                 sys.exit(1)
         except FileNotFoundError as err:
             print("The nightly release of xfreerdp does not appear to be",
@@ -84,7 +84,6 @@ def generate_cert():
     with open("selfsigned.key", "wb") as f:
         f.write(key_data)
     X509['key'] = key_data.decode()
-    print(X509['key'])
     subject = issuer = x509.Name([
         x509.NameAttribute(NameOID.COUNTRY_NAME, u"CN"),
         x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, u"MBG"),
@@ -97,8 +96,7 @@ def generate_cert():
     with open("selfsigned.cert", "wb") as f:
         f.write(cert.public_bytes(serialization.Encoding.PEM))
     X509['cert'] = cert.public_bytes(serialization.Encoding.PEM).decode()
-    fingerprint = cert.fingerprint(hashes.SHA256())
-    X509['fp'] = ''.join(f'{b:02x}' for b in fingerprint)
+    X509['fp'] = ''.join(f'{b:02x}' for b in cert.fingerprint(hashes.SHA256()))
     return X509
 
 def get_ip_addresses():
@@ -134,7 +132,6 @@ def generate_host_info(keycert):
 
 def generate_qr(host_info):
     qr_content = "motorolardpconnection" + json.dumps(host_info, separators=(',', ':'))
-    print(qr_content)
     qr = subprocess.run(shlex.split(f"qrencode -t utf8 '{qr_content}'"),
         stdout=subprocess.PIPE,
         universal_newlines=True)
@@ -143,7 +140,6 @@ def generate_qr(host_info):
 
 class ReadyForHandler(BaseHTTPRequestHandler):
     def do_POST(self):
-        print(self.path)
         if self.path == "/rdp/connect":
             raw_data = self.rfile.read().decode('utf8')
             print(raw_data)
