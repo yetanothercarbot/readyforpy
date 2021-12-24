@@ -3,8 +3,8 @@
 import sys
 
 try:
-    import datetime, hashlib, json, netifaces, os, platform, qrcode, random
-    import re, shlex, ssl, string, subprocess, time
+    import argparse, datetime, hashlib, json, netifaces, os, platform, qrcode
+    import random, re, shlex, ssl, string, subprocess, time
     from http.server import BaseHTTPRequestHandler, HTTPServer
 
     from cryptography import x509
@@ -21,51 +21,46 @@ EXPIRY_PERIOD = 60
 RAND_VALID_CHARS = string.ascii_uppercase + string.ascii_lowercase + string.digits
 HTTP_PORT = 9833
 
-XFREERDP_PATH = "/opt/freerdp-nightly/bin/xfreerdp"
 XFREERDP_INSTRUCTIONS = "https://github.com/FreeRDP/FreeRDP/wiki/PreBuilds"
 XFREERDP_RE = re.compile(r"\d+")
+XFREERDP_COMMAND = "{} /v:{} /cert:ignore /size:1280x720 /u:{} /p:{}"
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-v", "--verbose", help="Show debugging messages", action="count", default=0)
+parser.add_argument("--freerdp-path", help="Specify an alternative path for freerdp", default="/opt/freerdp-nightly/bin/xfreerdp")
+parser.add_argument("--no-check-freerdp", help="Skip freerdp presence & version checks", action="store_true")
+args = parser.parse_args()
 
 def check_freerdp():
     if platform.system() == 'Linux':
         # Check if a xfreerdp is installed
         try:
             xfreerdp_result = subprocess.run(
-                shlex.split('/opt/freerdp-nightly/bin/xfreerdp --version'),
+                shlex.split(f'{args.freerdp_path} --version'),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 universal_newlines=True
             )
             version = XFREERDP_RE.findall(xfreerdp_result.stdout)
             if (int(version[0]) < 3):
-                print(f"The provided version of xfreerdp is too old ({version[0]}.{version[1]}.{version[2]}). Please update to 3.0.0 or newer")
+                print(f"The provided version of xfreerdp is too old ({'.'.join(version[:3])}). Please update to 3.0.0 or newer")
+                print("(if this was a mistake, run with --no-check-freerdp)")
                 sys.exit(1)
+            elif args.verbose >= 1:
+                print(f"[ReadyForPy] Detected freerdp version {'.'.join(version[:3])}")
         except FileNotFoundError as err:
             print("The nightly release of xfreerdp does not appear to be",
                 f"installed. Please see {XFREERDP_INSTRUCTIONS} for details",
                 "on installing")
             sys.exit(1)
     elif platform.system() == 'Windows':
-        print("Windows is currently not supported, due to how QR codes are",
-            "being generated. This will be fixed in the future.")
+        print("Windows has not yet been tested - rerun with the --no-check-freerdp flag and specify a location for freerdp with --freerdp-path")
         sys.exit(2)
     else:
-        print("You are currently not on a tested platform. Please ensure you",
-            "have qrencode available in the path and that a nightly version",
-            "of freerdp is available. You will likely need to change the path")
-        input("Press ENTER to continue or Ctrl-C to quit.")
-
-def check_deps():
-    # Check if qr encode & xfreerdp is available
-    # Best way to check if it is available is to run it
-    check_freerdp()
-    try:
-        qrencode_result = subprocess.run(['qrencode'],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL)
-    except FileNotFoundError as err:
-        print(f"Unable to execute {err.filename}. Is it installed?")
-        sys.exit(1)
-    return True
+        print("You are currently not on a tested platform. You will need freerdp",
+            "(3.0.0 or newer). To test, rerun with --no-check-freerdp and specify",
+            "the location of freerdp with --freerdp-path")
+        sys.exit(2)
 
 # Generates a new certificate
 def generate_cert():
@@ -84,6 +79,8 @@ def generate_cert():
     with open("selfsigned.key", "wb") as f:
         f.write(key_data)
     X509['key'] = key_data.decode()
+    if args.verbose >= 2:
+        print(X509['key'])
     subject = issuer = x509.Name([
         x509.NameAttribute(NameOID.COUNTRY_NAME, u"CN"),
         x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, u"MBG"),
@@ -96,7 +93,11 @@ def generate_cert():
     with open("selfsigned.cert", "wb") as f:
         f.write(cert.public_bytes(serialization.Encoding.PEM))
     X509['cert'] = cert.public_bytes(serialization.Encoding.PEM).decode()
+    if args.verbose >= 2:
+        print(X509['cert'])
     X509['fp'] = ''.join(f'{b:02x}' for b in cert.fingerprint(hashes.SHA256()))
+    if args.verbose >= 2:
+        print(X509['fp'])
     return X509
 
 def get_ip_addresses():
@@ -108,9 +109,11 @@ def get_ip_addresses():
                 addresses.append(v[0]['addr'])
     # Return first available IP address
     if len(addresses) == 0:
-        print("Unable to find valid IP address. Are you connected and have a",
+        print("Unable to find valid IP address. Are you connected and have an",
                 "IPv4 address?")
         sys.exit(3)
+    if args.verbose >= 1:
+        print("[ReadyForPy] IP addresses: ", ", ".join(addresses))
     return addresses
 
 # Generates the host info dictionary that will be processed for the qr code
@@ -135,10 +138,8 @@ def generate_host_info(keycert):
 
 def generate_qr(host_info):
     qr_content = "motorolardpconnection" + json.dumps(host_info, separators=(',', ':'))
-    #qr = subprocess.run(shlex.split(f"qrencode -t utf8 '{qr_content}'"),
-    #    stdout=subprocess.PIPE,
-    #    universal_newlines=True)
-    #print(qr.stdout)
+    if args.verbose >= 1:
+        print("[ReadyForPy] QR content:", qr_content)
     qr = qrcode.make(qr_content)
     qr.show()
 
@@ -162,10 +163,15 @@ class ReadyForHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(bytes("success", "utf8"))
                 subprocess.run(
-                    shlex.split(f"{XFREERDP_PATH} /v:{phone_info['phoneIp']} /cert:ignore /size:1280x720 /u:{host_info['user']} /p:{host_info['pass']}")
-                    ,universal_newlines=True
+                    shlex.split(XFREERDP_COMMAND.format(
+                        args.freerdp_path,
+                        phone_info['phoneIp'],
+                        host_info['user'],
+                        host_info['pass']
+                    )),
+                    universal_newlines=True
                 )
-                sys.exit()
+                sys.exit(0)
         elif self.path == "/rdp/connect/success":
             print("Success!")
             self.protocol_version = "HTTP/1.1"
@@ -173,12 +179,13 @@ class ReadyForHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", len("success"))
             self.end_headers()
             self.wfile.write(bytes("success", "utf8"))
-try:
-    check_deps()
-    keycert = generate_cert()
-    host_info = generate_host_info(keycert)
-    generate_qr(host_info)
 
+if not args.no_check_freerdp:
+    check_freerdp()
+keycert = generate_cert()
+host_info = generate_host_info(keycert)
+generate_qr(host_info)
+try:
     httpd = HTTPServer(('', HTTP_PORT), ReadyForHandler)
     # TODO: ssl.wrap_socket is deprecated with Py 3.7+
     httpd.socket = ssl.wrap_socket(httpd.socket,

@@ -1,21 +1,32 @@
 # Systems supported
-Currently, only Linux works. It's possible that MacOS works, but I do not have a MacOS machine to test.
+Currently, only Linux works. It's possible that MacOS works, but I do not have
+a MacOS machine to test.
 
-As xfreerdp is supported on all three major platforms, Windows support is planned as well.
+As xfreerdp is supported on all three major platforms, Windows support is
+planned as well.
 
 # Requirements
 Most requirements are through python and can be installed with
 
-    pip install -r requirements.txt
+    pip3 install -r requirements.txt
 
-Two requirements are not available through PyPi:
+You will also need freerdp - this script assumes you're using x and will launch
+xfreerdp accordingly. This behavious can be overriden with the `--freerdp-path`
+parameter.
 
-* qrencode (available, on Debian-based distributions, in apt)
-* xfreerdp (version in apt is not new enough. I've tested it with 3.0.0, available [here](https://github.com/FreeRDP/FreeRDP/wiki/PreBuilds))
+**NOTE:** You will need FreeRDP 3.0.0 or later - older versions do not seem
+to connect correctly and will terminate the connection. You can download the
+newest nightly builds [here](https://github.com/FreeRDP/FreeRDP/wiki/PreBuilds).
 
 # Running
 In a shell, simply run:
 
     ./readyfor.py
 
-if all dependencies are installed, then a QR code will be printed to the terminal. This can be scanned in the camera app or the Ready For app to connect.
+if all dependencies are installed, then a QR code will be displayed in a popup. This can be scanned in the camera app or the Ready For app to connect.
+
+There are a number of command line options:
+
+* `--no-check-freerdp` skips the freerdp validation
+* `--freerdp-path` is used to specify a different freerdp command
+(such as for wayland desktops) or for an alternative installation path
