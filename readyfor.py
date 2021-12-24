@@ -127,7 +127,6 @@ def generate_host_info(keycert):
                 + host_info['pass']
                 + str(EXPIRY_PERIOD) + "[\"" + host_info['ips'][0] + "\"]")
     host_info['token'] = hashlib.sha256(content.encode()).hexdigest()[:16]
-    print("Generated token:", host_info['token'])
     return host_info
 
 def generate_qr(host_info):
