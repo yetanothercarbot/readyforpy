@@ -1,3 +1,2 @@
 cryptography
-shlex
-ssl
+qrcode[pil]
