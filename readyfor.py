@@ -107,6 +107,10 @@ def get_ip_addresses():
                 # Valid address!
                 addresses.append(v[0]['addr'])
     # Return first available IP address
+    if len(addresses) == 0:
+        print("Unable to find valid IP address. Are you connected and have a",
+                "IPv4 address?")
+        sys.exit(3)
     return addresses
 
 # Generates the host info dictionary that will be processed for the qr code
@@ -163,16 +167,18 @@ class ReadyForHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", len("success"))
             self.end_headers()
             self.wfile.write(bytes("success", "utf8"))
+try:
+    check_deps()
+    keycert = generate_cert()
+    host_info = generate_host_info(keycert)
+    generate_qr(host_info)
 
-check_deps()
-keycert = generate_cert()
-host_info = generate_host_info(keycert)
-generate_qr(host_info)
-
-httpd = HTTPServer(('', HTTP_PORT), ReadyForHandler)
-# TODO: ssl.wrap_socket is deprecated with Py 3.7+
-httpd.socket = ssl.wrap_socket(httpd.socket,
-    keyfile="selfsigned.key",
-    certfile="selfsigned.cert",
-    server_side=True)
-httpd.serve_forever()
+    httpd = HTTPServer(('', HTTP_PORT), ReadyForHandler)
+    # TODO: ssl.wrap_socket is deprecated with Py 3.7+
+    httpd.socket = ssl.wrap_socket(httpd.socket,
+        keyfile="selfsigned.key",
+        certfile="selfsigned.cert",
+        server_side=True)
+    httpd.serve_forever()
+except KeyboardInterrupt as interrupt:
+    print("\nQuitting...")
