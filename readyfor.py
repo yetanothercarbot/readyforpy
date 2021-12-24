@@ -3,9 +3,15 @@
 import sys
 
 try:
-    import hashlib, json, netifaces, os, random, shlex, ssl, string, subprocess, time
+    import datetime, hashlib, json, netifaces, os, random, shlex, ssl, string
+    import subprocess, time
     from http.server import BaseHTTPRequestHandler, HTTPServer
 
+    from cryptography import x509
+    from cryptography.x509.oid import NameOID
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
 except ImportError as err:
     print(f"Unable to load {err.name} - have you installed library dependencies?")
     sys.exit(1)
@@ -18,13 +24,9 @@ RAND_VALID_CHARS = string.ascii_uppercase + string.ascii_lowercase + string.digi
 HTTP_PORT = 9833
 
 def check_deps():
-    # TODO: Check if OpenSSL, qrencode, etc are available
-    # Best way to check if they are available is to run them
+    # TODO: Check if qr encode is available
+    # Best way to check if it is available is to run them
     try:
-        openssl_return_code = subprocess.run(shlex.split('openssl help'),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            universal_newlines=True).returncode
         qrencode_return_code = subprocess.run(shlex.split('qrencode'),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -36,26 +38,36 @@ def check_deps():
 
 # Generates a new certificate
 def generate_cert():
-    # First, remove old files if necessary
-    if os.path.exists("selfsigned.key"):
-        os.remove("selfsigned.key")
-    if os.path.exists("selfsigned.cert"):
-        os.remove("selfsigned.cert")
     X509 = dict()
-    # Don't care about CLI output
-    subprocess.run(shlex.split(CERT_GEN_CMD),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        universal_newlines=True)
-    fingerprint = subprocess.run(shlex.split(CERT_GET_FP),
-        stdout=subprocess.PIPE,
-        universal_newlines=True)
-    with open('selfsigned.key') as f:
-        X509['key'] = f.readlines()
-    with open('selfsigned.cert') as f:
-        X509['cert'] = f.readlines()
-    X509['fp'] = fingerprint.stdout[19:].replace(':', '').lower()
+    # Generate key
+    key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048
+    )
+    key_data = key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption()
+    )
+    # Must be written to file for Python's SSL library
+    with open("selfsigned.key", "wb") as f:
+        f.write(key_data)
+    X509['key'] = key_data.decode()
+    print(X509['key'])
+    subject = issuer = x509.Name([
+        x509.NameAttribute(NameOID.COUNTRY_NAME, u"CN"),
+        x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, u"MBG"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, u"Lenovo"),
+        x509.NameAttribute(NameOID.COMMON_NAME, u"Lenovo"),
+    ])
 
+    cert = x509.CertificateBuilder().subject_name(subject).issuer_name(issuer).public_key(key.public_key()).serial_number(x509.random_serial_number()).not_valid_before(datetime.datetime.utcnow() - datetime.timedelta(days=365)).not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=365)).sign(key, hashes.SHA256())
+    # Must be written to file for Python's SSL library
+    with open("selfsigned.cert", "wb") as f:
+        f.write(cert.public_bytes(serialization.Encoding.PEM))
+    X509['cert'] = cert.public_bytes(serialization.Encoding.PEM).decode()
+    fingerprint = cert.fingerprint(hashes.SHA256())
+    X509['fp'] = ''.join(f'{b:02x}' for b in fingerprint)
     return X509
 
 def get_ip_addresses():
@@ -71,7 +83,7 @@ def get_ip_addresses():
 # Generates the host info dictionary that will be processed for the qr code
 def generate_host_info(keycert):
     host_info = {}
-    host_info['fp'] = keycert['fp'][:-1]
+    host_info['fp'] = keycert['fp']
     host_info['authLevel'] = 2
     host_info['sn'] = 0
     host_info['ips'] = get_ip_addresses();
