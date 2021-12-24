@@ -3,8 +3,8 @@
 import sys
 
 try:
-    import datetime, hashlib, json, netifaces, os, random, shlex, ssl, string
-    import subprocess, time
+    import datetime, hashlib, json, netifaces, os, platform, random, re, shlex
+    import ssl, string, subprocess, time
     from http.server import BaseHTTPRequestHandler, HTTPServer
 
     from cryptography import x509
@@ -21,14 +21,47 @@ EXPIRY_PERIOD = 60
 RAND_VALID_CHARS = string.ascii_uppercase + string.ascii_lowercase + string.digits
 HTTP_PORT = 9833
 
+XFREERDP_PATH = "/opt/freerdp-nightly/bin/xfreerdp"
+XFREERDP_INSTRUCTIONS = "https://github.com/FreeRDP/FreeRDP/wiki/PreBuilds"
+XFREERDP_RE = re.compile(r"\d+")
+
+def check_freerdp():
+    if platform.system() == 'Linux':
+        # Check if a xfreerdp is installed
+        try:
+            xfreerdp_result = subprocess.run(
+                shlex.split('/opt/freerdp-nightly/bin/xfreerd', '--version'),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                universal_newlines=True
+            )
+            version = XFREERDP_RE.findall(xfreerdp_result.stdout)
+            if (int(version[0]) < 2) or (int(version[0]) == 2 and int(version[1]) < 4):
+                print(f"The provided version of xfreerdp is too old ({version[0]}.{version[1]}.{version[2]}). Please update to 2.4.1 or newer")
+                sys.exit(1)
+        except FileNotFoundError as err:
+            print("The nightly release of xfreerdp does not appear to be",
+                f"installed. Please see {XFREERDP_INSTRUCTIONS} for details",
+                "on installing")
+            sys.exit(1)
+    elif platform.system() == 'Windows':
+        print("Windows is currently not supported, due to how QR codes are",
+            "being generated. This will be fixed in the future.")
+        sys.exit(2)
+    else:
+        print("You are currently not on a tested platform. Please ensure you",
+            "have qrencode available in the path and that a nightly version",
+            "of freerdp is available. You will likely need to change the path")
+        input("Press ENTER to continue or Ctrl-C to quit.")
+
 def check_deps():
-    # Check if qr encode is available
+    # Check if qr encode & xfreerdp is available
     # Best way to check if it is available is to run it
+    check_freerdp()
     try:
-        qrencode_return_code = subprocess.run(shlex.split('qrencode'),
+        qrencode_result = subprocess.run(['qrencode'],
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            universal_newlines=True)
+            stderr=subprocess.DEVNULL)
     except FileNotFoundError as err:
         print(f"Unable to execute {err.filename}. Is it installed?")
         sys.exit(1)
@@ -126,7 +159,7 @@ class ReadyForHandler(BaseHTTPRequestHandler):
                 self.send_header("Content-Length", len("success"))
                 self.end_headers()
                 self.wfile.write(bytes("success", "utf8"))
-                subprocess.run(shlex.split(f"/opt/freerdp-nightly/bin/xfreerdp /v:{phone_info['phoneIp']} /cert:ignore /size:1280x720 /u:{host_info['user']} /p:{host_info['pass']}"),
+                subprocess.run(shlex.split(f"{XFREERDP_PATH} /v:{phone_info['phoneIp']} /cert:ignore /size:1280x720 /u:{host_info['user']} /p:{host_info['pass']}"),
                 universal_newlines=True)
         elif self.path == "/rdp/connect/success":
             print("Success!")
