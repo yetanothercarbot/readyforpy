@@ -23,12 +23,13 @@ HTTP_PORT = 9833
 
 XFREERDP_INSTRUCTIONS = "https://github.com/FreeRDP/FreeRDP/wiki/PreBuilds"
 XFREERDP_RE = re.compile(r"\d+")
-XFREERDP_COMMAND = "{} /v:{} /cert:ignore /size:1280x720 /u:{} /p:{}"
+XFREERDP_COMMAND = "{} /v:{} /cert:ignore /size:{} /u:{} /p:{}"
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-v", "--verbose", help="Show debugging messages", action="count", default=0)
-parser.add_argument("--freerdp-path", help="Specify an alternative path for freerdp", default="/opt/freerdp-nightly/bin/xfreerdp")
 parser.add_argument("--no-check-freerdp", help="Skip freerdp presence & version checks", action="store_true")
+parser.add_argument("--freerdp-path", help="Specify an alternative path for freerdp", default="/opt/freerdp-nightly/bin/xfreerdp")
+parser.add_argument("-r", "--resolution", help="Set custom resolution for RDP connection", default="1280x720")
 args = parser.parse_args()
 
 def check_freerdp():
@@ -37,8 +38,8 @@ def check_freerdp():
         try:
             xfreerdp_result = subprocess.run(
                 shlex.split(f'{args.freerdp_path} --version'),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
+                stdout = subprocess.PIPE,
+                stderr = subprocess.DEVNULL,
                 universal_newlines=True
             )
             version = XFREERDP_RE.findall(xfreerdp_result.stdout)
@@ -147,30 +148,48 @@ def generate_qr(host_info):
 class ReadyForHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/rdp/connect":
-            print("*** You can close the QR code window now ***")
             raw_data = self.rfile.read().decode('utf8')
-            print(raw_data)
+            if args.verbose >= 2:
+                print("[ReadyForPy] Payload:", raw_data)
             phone_info = {}
             for kv_pair in raw_data.split('&'):
                 split = kv_pair.split('=')
                 phone_info[split[0]] = split[1]
-                print(split[0] + ": " + split[1])
+                if args.verbose >= 1:
+                    print("[ReadyForPy]", split[0] + ": " + split[1])
 
             if phone_info['token'] == host_info['token']:
+                print("*** You can close the QR code window now ***")
                 self.protocol_version = "HTTP/1.1"
                 self.send_response(200)
                 self.send_header("Content-Length", len("success"))
                 self.end_headers()
                 self.wfile.write(bytes("success", "utf8"))
-                subprocess.run(
-                    shlex.split(XFREERDP_COMMAND.format(
-                        args.freerdp_path,
-                        phone_info['phoneIp'],
-                        host_info['user'],
-                        host_info['pass']
-                    )),
-                    universal_newlines=True
-                )
+                if args.verbose >= 2:
+                    subprocess.run(
+                        shlex.split(XFREERDP_COMMAND.format(
+                            args.freerdp_path,
+                            phone_info['phoneIp'],
+                            args.resolution,
+                            host_info['user'],
+                            host_info['pass']
+                        )),
+                        universal_newlines=True
+                    )
+                else:
+                    # Suppress output
+                    subprocess.run(
+                        shlex.split(XFREERDP_COMMAND.format(
+                            args.freerdp_path,
+                            phone_info['phoneIp'],
+                            args.resolution,
+                            host_info['user'],
+                            host_info['pass']
+                        )),
+                        stdout = subprocess.DEVNULL,
+                        stderr = subprocess.DEVNULL,
+                        universal_newlines=True
+                    )
                 sys.exit(0)
         elif self.path == "/rdp/connect/success":
             print("Success!")
