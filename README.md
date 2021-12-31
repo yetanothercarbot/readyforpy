@@ -25,8 +25,26 @@ In a shell, simply run:
 
 if all dependencies are installed, then a QR code will be displayed in a popup. This can be scanned in the camera app or the Ready For app to connect.
 
-There are a number of command line options:
+# Advanced use
+## Command line options
+| Option | Description |
+|--|--|
+| `--no-check-freerdp` | Skip the FreeRDP availability and version check. |
+| `--frerdp-path` | Specify an alternative command (such as for Wayland desktops) or an alternative installation path for FreeRDP |
+| `-v` | Show more verbose messages in terminal output |
+| `-h`, `--help` | Show help message |
+| `-r`, `--resolution` | Use a different resolution for RDP (defaults to 1280x720 |
+| `-c`, `--config` | Specify a configuration file (see below) |
 
-* `--no-check-freerdp` skips the freerdp validation
-* `--freerdp-path` is used to specify a different freerdp command
-(such as for wayland desktops) or for an alternative installation path
+## Configuration file
+If `settings.json` is present in the ReadyForPy, it will automatically be used. Command-line options will override config file options, if they conflict.
+
+The `settings.json` file uses JSON and these options:
+
+| Option | Description | Type |
+|----------|------------------|---------|
+|`username`| Use a fixed username (rather than randomly generated) for RDP | String |
+|`password` | Use a fixed password (rather than randomly generated) for RDP | String |
+|`freerdp_path` | Specify an alternative command to use for FreeRDP - similar to --freerdp-path | String |
+|`no_check_freerdp` | Skip FreeRDP presence and version check | Boolean |
+|`resolution` | Specify custom resolution | String |
