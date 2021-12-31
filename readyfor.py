@@ -25,11 +25,22 @@ XFREERDP_INSTRUCTIONS = "https://github.com/FreeRDP/FreeRDP/wiki/PreBuilds"
 XFREERDP_RE = re.compile(r"\d+")
 XFREERDP_COMMAND = "{} /v:{} /cert:ignore /size:{} /u:{} /p:{}"
 
+DEFAULT_CONFIG_FILE = "settings.json"
+BASE_CONFIG = {
+    "verbose": 0,
+    "no_check_freerdp": False,
+    "freerdp_path": "/opt/freerdp-nightly/bin/xfreerdp",
+    "resolution": "1280x720",
+    "username": False, # Is set to a string if a custom username/password is used
+    "password": False
+}
+
 parser = argparse.ArgumentParser()
 parser.add_argument("-v", "--verbose", help="Show debugging messages", action="count", default=0)
 parser.add_argument("--no-check-freerdp", help="Skip freerdp presence & version checks", action="store_true")
-parser.add_argument("--freerdp-path", help="Specify an alternative path for freerdp", default="/opt/freerdp-nightly/bin/xfreerdp")
-parser.add_argument("-r", "--resolution", help="Set custom resolution for RDP connection", default="1280x720")
+parser.add_argument("--freerdp-path", help="Specify an alternative path for freerdp")
+parser.add_argument("-r", "--resolution", help="Set custom resolution for RDP connection")
+parser.add_argument("-c", "--config", help="Specify a config file", default=DEFAULT_CONFIG_FILE)
 args = parser.parse_args()
 
 def check_freerdp():
@@ -101,6 +112,8 @@ def generate_cert():
         print(X509['fp'])
     return X509
 
+# Gets list of IP addresses available to machine
+# Ignores localhost and non-IPv4 addresses
 def get_ip_addresses():
     addresses = []
     for iface in netifaces.interfaces():
@@ -198,6 +211,39 @@ class ReadyForHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", len("success"))
             self.end_headers()
             self.wfile.write(bytes("success", "utf8"))
+
+# This will take the base config and override options provided in overlay
+def overlay_config(base, overlay):
+    if type(overlay) is not dict:
+        overlay = vars(overlay)
+    # Copy dict - don't modify dict passed in
+    updated_config = base.copy()
+    
+    for k, v in overlay.items():
+        if (k == "verbose" and v > updated_config[k]) or (k != "config" and k != "verbose") and v is not None:
+            updated_config[k] = v
+    return updated_config
+
+def load_config():
+    try:
+        with open(args.config, 'r') as f:
+            return json.loads(f.read())
+    except FileNotFoundError as err:
+        if args.config != DEFAULT_CONFIG_FILE:
+            print(f"[ReadyForPy] Unable to find config file \"{args.config}\"")
+            sys.exit(3)
+        else:
+            return BASE_CONFIG
+    except PermissionError as err:
+        print(f"[ReadyForPy] Unable to open \"{args.config}\" - are the permissions set correctly?")
+        sys.exit(3)
+    except json.decoder.JSONDecodeError as err:
+        print(f"[ReadyForPy] Syntax error in config file \"{args.config}\":")
+        print("[ReadyForPy]", err)
+        sys.exit(3)
+
+config = overlay_config(overlay_config(BASE_CONFIG, load_config()), args)
+print(config)
 
 if not args.no_check_freerdp:
     check_freerdp()
