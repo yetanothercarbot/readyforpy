@@ -51,7 +51,9 @@ def overlay_config(base, overlay):
     updated_config = base.copy()
     
     for k, v in overlay.items():
-        if (k == "verbose" and v > updated_config[k]) or (k != "config" and k != "verbose") and v is not None:
+        if ((k == "verbose" and v > updated_config[k]) or (k not in ("config", "verbose", "no_check_freerdp")) or (k == "no_check_freerdp" and v == True)) and v is not None:
+            if args.verbose >= 2 or updated_config["verbose"] >= 2:
+                print(f"[ReadyForPy] Changing {k}: {updated_config[k]} -> {v}")
             updated_config[k] = v
     return updated_config
 
