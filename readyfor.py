@@ -43,25 +43,60 @@ parser.add_argument("-r", "--resolution", help="Set custom resolution for RDP co
 parser.add_argument("-c", "--config", help="Specify a config file", default=DEFAULT_CONFIG_FILE)
 args = parser.parse_args()
 
+# This will take the base config and override options provided in overlay
+def overlay_config(base, overlay):
+    if type(overlay) is not dict:
+        overlay = vars(overlay)
+    # Copy dict - don't modify dict passed in
+    updated_config = base.copy()
+    
+    for k, v in overlay.items():
+        if (k == "verbose" and v > updated_config[k]) or (k != "config" and k != "verbose") and v is not None:
+            updated_config[k] = v
+    return updated_config
+
+def load_config(args):
+    try:
+        with open(args.config, 'r') as f:
+            print(f"[ReadyForPy] Using config file \"{args.config}\"")
+            return json.loads(f.read())
+    except FileNotFoundError as err:
+        if args.config != DEFAULT_CONFIG_FILE:
+            print(f"[ReadyForPy] Unable to find config file \"{args.config}\"")
+            sys.exit(3)
+        else:
+            return BASE_CONFIG
+    except PermissionError as err:
+        print(f"[ReadyForPy] Unable to open \"{args.config}\" - are the permissions set correctly?")
+        sys.exit(3)
+    except json.decoder.JSONDecodeError as err:
+        print(f"[ReadyForPy] Syntax error in config file \"{args.config}\":")
+        print("[ReadyForPy]", err)
+        sys.exit(3)
+
+config = overlay_config(overlay_config(BASE_CONFIG, load_config(args)), args)
+if config["verbose"] >= 1:
+    print("[ReadyForPy] Configuration:", config)
+
 def check_freerdp():
     if platform.system() == 'Linux':
         # Check if a xfreerdp is installed
         try:
             xfreerdp_result = subprocess.run(
-                shlex.split(f'{args.freerdp_path} --version'),
+                shlex.split(f'{config["freerdp_path"]} --version'),
                 stdout = subprocess.PIPE,
                 stderr = subprocess.DEVNULL,
                 universal_newlines=True
             )
             version = XFREERDP_RE.findall(xfreerdp_result.stdout)
             if (int(version[0]) < 3):
-                print(f"The provided version of xfreerdp is too old ({'.'.join(version[:3])}). Please update to 3.0.0 or newer")
-                print("(if this was a mistake, run with --no-check-freerdp)")
+                print(f"[ReadyForPy] The provided version of xfreerdp is too old ({'.'.join(version[:3])}). Please update to 3.0.0 or newer")
+                print("[ReadyForPy] (if this was a mistake, run with --no-check-freerdp)")
                 sys.exit(1)
-            elif args.verbose >= 1:
+            elif config["verbose"] >= 1:
                 print(f"[ReadyForPy] Detected freerdp version {'.'.join(version[:3])}")
         except FileNotFoundError as err:
-            print("The nightly release of xfreerdp does not appear to be",
+            print("[ReadyForPy] The nightly release of xfreerdp does not appear to be",
                 f"installed. Please see {XFREERDP_INSTRUCTIONS} for details",
                 "on installing")
             sys.exit(1)
@@ -91,7 +126,7 @@ def generate_cert():
     with open("selfsigned.key", "wb") as f:
         f.write(key_data)
     X509['key'] = key_data.decode()
-    if args.verbose >= 2:
+    if config["verbose"] >= 2:
         print(X509['key'])
     subject = issuer = x509.Name([
         x509.NameAttribute(NameOID.COUNTRY_NAME, u"CN"),
@@ -105,10 +140,10 @@ def generate_cert():
     with open("selfsigned.cert", "wb") as f:
         f.write(cert.public_bytes(serialization.Encoding.PEM))
     X509['cert'] = cert.public_bytes(serialization.Encoding.PEM).decode()
-    if args.verbose >= 2:
+    if config["verbose"] >= 2:
         print(X509['cert'])
     X509['fp'] = ''.join(f'{b:02x}' for b in cert.fingerprint(hashes.SHA256()))
-    if args.verbose >= 2:
+    if config["verbose"] >= 2:
         print(X509['fp'])
     return X509
 
@@ -126,7 +161,7 @@ def get_ip_addresses():
         print("Unable to find valid IP address. Are you connected and have an",
                 "IPv4 address?")
         sys.exit(3)
-    if args.verbose >= 1:
+    if config["verbose"] >= 1:
         print("[ReadyForPy] IP addresses: ", ", ".join(addresses))
     return addresses
 
@@ -152,7 +187,7 @@ def generate_host_info(keycert):
 
 def generate_qr(host_info):
     qr_content = "motorolardpconnection" + json.dumps(host_info, separators=(',', ':'))
-    if args.verbose >= 1:
+    if config["verbose"] >= 1:
         print("[ReadyForPy] QR content:", qr_content)
     qr = qrcode.make(qr_content)
     qr.show()
@@ -162,13 +197,13 @@ class ReadyForHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/rdp/connect":
             raw_data = self.rfile.read().decode('utf8')
-            if args.verbose >= 2:
+            if config["verbose"] >= 2:
                 print("[ReadyForPy] Payload:", raw_data)
             phone_info = {}
             for kv_pair in raw_data.split('&'):
                 split = kv_pair.split('=')
                 phone_info[split[0]] = split[1]
-                if args.verbose >= 1:
+                if config["verbose"] >= 1:
                     print("[ReadyForPy]", split[0] + ": " + split[1])
 
             if phone_info['token'] == host_info['token']:
@@ -178,14 +213,14 @@ class ReadyForHandler(BaseHTTPRequestHandler):
                 self.send_header("Content-Length", len("success"))
                 self.end_headers()
                 self.wfile.write(bytes("success", "utf8"))
-                if args.verbose >= 2:
+                if config["verbose"] >= 2:
                     subprocess.run(
                         shlex.split(XFREERDP_COMMAND.format(
-                            args.freerdp_path,
-                            phone_info['phoneIp'],
-                            args.resolution,
-                            host_info['user'],
-                            host_info['pass']
+                            config["freerdp_path"],
+                            phone_info["phoneIp"],
+                            config["resolution"],
+                            host_info["user"],
+                            host_info["pass"]
                         )),
                         universal_newlines=True
                     )
@@ -193,9 +228,9 @@ class ReadyForHandler(BaseHTTPRequestHandler):
                     # Suppress output
                     subprocess.run(
                         shlex.split(XFREERDP_COMMAND.format(
-                            args.freerdp_path,
+                            config["freerdp_path"],
                             phone_info['phoneIp'],
-                            args.resolution,
+                            config["resolution"],
                             host_info['user'],
                             host_info['pass']
                         )),
@@ -212,40 +247,7 @@ class ReadyForHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(bytes("success", "utf8"))
 
-# This will take the base config and override options provided in overlay
-def overlay_config(base, overlay):
-    if type(overlay) is not dict:
-        overlay = vars(overlay)
-    # Copy dict - don't modify dict passed in
-    updated_config = base.copy()
-    
-    for k, v in overlay.items():
-        if (k == "verbose" and v > updated_config[k]) or (k != "config" and k != "verbose") and v is not None:
-            updated_config[k] = v
-    return updated_config
-
-def load_config():
-    try:
-        with open(args.config, 'r') as f:
-            return json.loads(f.read())
-    except FileNotFoundError as err:
-        if args.config != DEFAULT_CONFIG_FILE:
-            print(f"[ReadyForPy] Unable to find config file \"{args.config}\"")
-            sys.exit(3)
-        else:
-            return BASE_CONFIG
-    except PermissionError as err:
-        print(f"[ReadyForPy] Unable to open \"{args.config}\" - are the permissions set correctly?")
-        sys.exit(3)
-    except json.decoder.JSONDecodeError as err:
-        print(f"[ReadyForPy] Syntax error in config file \"{args.config}\":")
-        print("[ReadyForPy]", err)
-        sys.exit(3)
-
-config = overlay_config(overlay_config(BASE_CONFIG, load_config()), args)
-print(config)
-
-if not args.no_check_freerdp:
+if not config["no_check_freerdp"]:
     check_freerdp()
 keycert = generate_cert()
 host_info = generate_host_info(keycert)
